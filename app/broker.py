@@ -6,7 +6,7 @@ This is where all six vocabulary words from the proposal actually appear:
   Exchange    declare_topology() creates the "orders" topic exchange
   Queue       declare_topology() creates payment / restaurant / notification
   Binding     queue_bind(), once per routing key
-  Routing key config.RK_ORDER_CREATED, config.RK_ORDER_PAID
+  Routing key config.RK_ORDER_CREATED and the workflow result keys
   Consumer    app/workers/base.py
 """
 import json

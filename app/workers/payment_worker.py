@@ -1,4 +1,4 @@
-"""Charge an order and publish the order.paid event."""
+"""Charge an order and publish a durable payment-success result."""
 
 import random
 import time
@@ -11,15 +11,25 @@ WORKER = "payment"
 
 def handle(payload: dict, ctx) -> None:
     order_id = payload["order_id"]
-    store.set_status(order_id, "PAYMENT_PROCESSING", worker=WORKER)
+    store.ensure_processing(order_id, WORKER)
+    if store.workflow_step_done(order_id, "payment"):
+        ctx.emit(config.RK_PAYMENT_SUCCEEDED, payload)
+        return
+
     time.sleep(config.T_PAYMENT)
-    if config.FAIL_RATE and random.random() < config.FAIL_RATE:
+    if (config.PAYMENT_FAIL_RATE
+            and random.random() < config.PAYMENT_FAIL_RATE):
         raise RuntimeError("payment gateway timeout")
-    store.set_status(order_id, "PAID",
-                     f"charged {payload['total']:.2f} THB", WORKER)
+    store.record_step_success(
+        order_id,
+        "payment",
+        "PAYMENT_SUCCEEDED",
+        f"charged {payload['total']:.2f} THB",
+        WORKER,
+    )
     ctx.log.info("   charged %.2f THB", payload["total"])
-    ctx.emit(config.RK_ORDER_PAID, payload)
+    ctx.emit(config.RK_PAYMENT_SUCCEEDED, payload)
 
 
 if __name__ == "__main__":
-    run_worker(config.Q_PAYMENT, handle, name=WORKER)
+    run_worker(config.Q_PAYMENT, handle, name=WORKER, critical=True)

@@ -4,21 +4,31 @@ sequenceDiagram
     participant DB as PostgreSQL
     participant MQ as RabbitMQ
     participant P as Payment
+    participant I as Inventory
+    participant X as Coordinator
     participant R as Restaurant
     participant N as Notification
     Customer->>API: POST /orders
     API->>DB: Save PENDING
     API->>MQ: Publish order.created
     API-->>Customer: 202 Accepted
-    par Independent consumers
+    par Parallel prerequisites
         MQ->>P: order.created
-        MQ->>R: order.created
+        MQ->>I: order.created
         MQ->>N: order.created
     end
-    P->>DB: PAYMENT_PROCESSING then PAID
-    P->>MQ: Publish order.paid
-    R->>DB: Restaurant notified and inventory reserved
-    MQ->>N: order.paid
-    N->>DB: Notification and COMPLETED
+    N->>DB: Honest receipt notification
+    P->>DB: PAYMENT_SUCCEEDED
+    I->>DB: INVENTORY_RESERVED
+    P->>MQ: payment.succeeded
+    I->>MQ: inventory.reserved
+    MQ->>X: Both outcomes
+    X->>DB: READY
+    X->>MQ: order.ready
+    MQ->>R: order.ready
+    R->>DB: Restaurant notified and CONFIRMED
+    R->>MQ: order.confirmed
+    MQ->>N: order.confirmed
+    N->>DB: Success notification and COMPLETED
     Customer->>API: GET /orders/{id}
     API-->>Customer: Status and timeline

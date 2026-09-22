@@ -64,8 +64,13 @@ def test_async_order_completes_with_expected_timeline(live_stack):
     assert order["status"] == "COMPLETED"
     stages = [event["stage"] for event in order["timeline"]]
     assert stages.count("NOTIFIED") == 2
-    assert {"PENDING", "PAYMENT_PROCESSING", "PAID", "RESTAURANT_NOTIFIED",
-            "INVENTORY_RESERVED", "COMPLETED"}.issubset(stages)
+    assert {"PENDING", "PROCESSING", "PAYMENT_SUCCEEDED", "INVENTORY_RESERVED",
+            "READY", "RESTAURANT_NOTIFIED", "CONFIRMED",
+            "COMPLETED"}.issubset(stages)
+    assert stages.index("PAYMENT_SUCCEEDED") < stages.index("READY")
+    assert stages.index("INVENTORY_RESERVED") < stages.index("READY")
+    assert stages.index("READY") < stages.index("RESTAURANT_NOTIFIED")
+    assert stages.index("RESTAURANT_NOTIFIED") < stages.index("COMPLETED")
 
 
 def test_sync_order_is_slow_and_complete(live_stack):

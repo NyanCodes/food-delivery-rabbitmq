@@ -246,8 +246,9 @@ async function refreshStats() {
     if (!response.ok || !body) return;
     const values = {
       pending: body.PENDING || 0,
-      processing: body.PAYMENT_PROCESSING || 0,
-      paid: body.PAID || 0,
+      processing: body.PROCESSING || 0,
+      ready: body.READY || 0,
+      confirmed: body.CONFIRMED || 0,
       completed: body.COMPLETED || 0,
       failed: body.FAILED || 0,
     };

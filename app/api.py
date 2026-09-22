@@ -61,7 +61,7 @@ def create_order_async(order: OrderIn):
         publisher.publish(config.RK_ORDER_CREATED,
                           {"order_id": order_id, **order.model_dump()})
     except Exception as exc:
-        store.set_status(order_id, "FAILED", f"publish: {exc}", "api")
+        store.fail_workflow(order_id, "api", f"publish: {exc}")
         log.exception("could not publish %s", order_id)
         raise HTTPException(status_code=503,
                             detail="order broker unavailable") from exc
@@ -81,14 +81,26 @@ def create_order_sync(order: OrderIn):
     order_id = f"SYN-{uuid.uuid4().hex[:8].upper()}"
     store.create_order(order_id, order.customer, order.restaurant,
                        order.items, order.total, status="PENDING")
+    store.add_event_once(
+        order_id, "NOTIFIED",
+        "Order received; confirming payment and availability.",
+        "sync", "notification.received",
+    )
+    store.ensure_processing(order_id, "sync")
     time.sleep(config.T_PAYMENT)
-    store.set_status(order_id, "PAID", "charged inline", "sync")
-    time.sleep(config.T_RESTAURANT)
-    store.add_event(order_id, "RESTAURANT_NOTIFIED", "inline", "sync")
+    store.record_step_success(
+        order_id, "payment", "PAYMENT_SUCCEEDED", "charged inline", "sync"
+    )
     time.sleep(config.T_INVENTORY)
-    store.add_event(order_id, "INVENTORY_RESERVED", "inline", "sync")
+    store.record_step_success(
+        order_id, "inventory", "INVENTORY_RESERVED", "reserved inline", "sync"
+    )
+    store.prepare_order_ready(order_id)
+    store.mark_ready_published(order_id)
+    time.sleep(config.T_RESTAURANT)
+    store.record_restaurant_confirmation(order_id, "ticket sent inline", "sync")
     time.sleep(config.T_NOTIFICATION)
-    store.set_status(order_id, "COMPLETED", "notified inline", "sync")
+    store.complete_order(order_id, "order confirmed inline", "sync")
     return OrderCompleted(
         order_id=order_id,
         status="COMPLETED",

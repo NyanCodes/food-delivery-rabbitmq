@@ -1,6 +1,6 @@
 PYTHON ?= python3
 
-.PHONY: up ps down nuke infra migrate api payment restaurant notify run reset health logs logs-workers demo chaos fail scale test build config
+.PHONY: up ps down nuke infra migrate api payment inventory coordinator restaurant notify run reset health logs logs-workers demo chaos fail scale test build config
 
 up:
 	docker compose up -d --build
@@ -26,6 +26,12 @@ api:
 payment:
 	$(PYTHON) -m app.workers.payment_worker
 
+inventory:
+	$(PYTHON) -m app.workers.inventory_worker
+
+coordinator:
+	$(PYTHON) -m app.workers.coordinator_worker
+
 restaurant:
 	$(PYTHON) -m app.workers.restaurant_worker
 
@@ -45,7 +51,7 @@ logs:
 	docker compose logs -f
 
 logs-workers:
-	docker compose logs -f payment-worker restaurant-worker notification-worker
+	docker compose logs -f payment-worker inventory-worker coordinator-worker restaurant-worker notification-worker
 
 demo:
 	docker compose exec api python demo/load_test.py 30 6

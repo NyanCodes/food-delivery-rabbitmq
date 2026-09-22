@@ -1,6 +1,6 @@
 # Food Delivery Order Processing with RabbitMQ
 
-This project compares two implementations of the same food-order workflow. The synchronous endpoint makes the customer wait while payment, restaurant notification, inventory reservation, and customer notification run in sequence. The RabbitMQ endpoint stores the order, publishes one event, and returns `202 Accepted` while independent workers continue in the background.
+This project compares two implementations of the same food-order workflow. The synchronous endpoint makes the customer wait while payment, inventory reservation, restaurant notification, and customer notification run in sequence. The RabbitMQ endpoint stores the order, publishes one event, and returns `202 Accepted` while coordinated workers continue in the background.
 
 RabbitMQ does not remove the work. It removes that work from the customer's request path, absorbs bursts, and keeps jobs queued while a worker is unavailable.
 
@@ -34,16 +34,18 @@ Use `make reset` before a rehearsal. Use `make down` to stop the stack or `make 
 
 ## Message flow
 
-`POST /orders` validates and saves an order as `PENDING`, publishes `order.created` to the durable `orders` topic exchange, and returns immediately. Bindings give three queues their own copy:
+`POST /orders` validates and saves an order as `PENDING`, publishes `order.created` to the durable `orders` topic exchange, and returns immediately. Payment and inventory then run in parallel. A durable coordinator releases the restaurant ticket only after both have succeeded:
 
 | Queue | Routing keys | Consumer work |
 |---|---|---|
-| `payment.process` | `order.created` | Simulate payment, record `PAID`, publish `order.paid` |
-| `restaurant.notify` | `order.created` | Send the restaurant ticket and reserve inventory |
-| `notification.send` | `order.created`, `order.paid` | Send acceptance and payment-confirmation notifications |
+| `payment.process` | `order.created` | Simulate payment and publish `payment.succeeded` |
+| `inventory.reserve` | `order.created` | Reserve inventory and publish `inventory.reserved` |
+| `order.coordinate` | Success and workflow-failure results | Join prerequisites, compensate failures, and publish `order.ready` or `order.failed` |
+| `restaurant.notify` | `order.ready` | Send the restaurant ticket and publish `order.confirmed` |
+| `notification.send` | `order.created`, `order.confirmed`, `order.failed` | Send truthful receipt, success, or failure notifications |
 | `orders.dlq` | Dead-lettered messages | Retain work that failed after the configured attempts |
 
-The notification worker marks the customer journey `COMPLETED` after the payment confirmation is sent. Restaurant work runs concurrently, so middle timeline events may appear in different orders.
+The first customer message says only that the order was received. A success message and `COMPLETED` state are impossible until payment, inventory, and restaurant notification have all succeeded. Payment and inventory timeline events may appear in either order.
 
 ![Sequence](diagrams/sequence.png)
 
@@ -51,7 +53,7 @@ The notification worker marks the customer journey `COMPLETED` after the payment
 
 - **Producer:** the FastAPI order endpoint.
 - **Exchange:** `orders`, a topic exchange that routes events by subject.
-- **Routing key:** `order.created` or `order.paid`.
+- **Routing key:** an event subject such as `order.created`, `payment.succeeded`, or `order.confirmed`.
 - **Queue:** a durable line of jobs owned by one service role.
 - **Consumer:** a worker that handles and acknowledges a queued message.
 - **Acknowledgement:** permission for RabbitMQ to remove a successfully handled delivery.
@@ -91,10 +93,12 @@ tracking pauses before a deliberately interrupted worker is restarted.
 - Publishers use confirms and mandatory routing so an unaccepted or unroutable message raises an error.
 - Consumers use manual acknowledgements and `prefetch=1`.
 - A failed handler republishes privately to its own queue, not through the topic exchange. This prevents a payment retry from repeating restaurant and notification work.
-- After `MAX_RETRIES` attempts, the message is rejected to `orders.dlx`, stored in `orders.dlq`, and the order is marked `FAILED`.
+- Workflow outcomes and notifications have unique event keys, so at-least-once delivery does not repeat their logical side effects.
+- After a critical step exhausts `MAX_RETRIES`, its message is dead-lettered and the coordinator marks the order `FAILED`, records any simulated refund or inventory release, and emits a customer failure notification.
+- Notification delivery failure is recorded and dead-lettered but does not invalidate or refund an otherwise confirmed order.
 - SIGTERM/SIGINT shutdown leaves unacknowledged deliveries available for redelivery.
 
-Delivery is **at least once**, not exactly once. A production payment integration must use `order_id` as an idempotency key because a worker can crash after an external charge but before acknowledgement.
+Delivery is **at least once**. Database markers make the demo's logical outcomes idempotent; a production payment integration must also pass `order_id` as the provider's idempotency key.
 
 ## Demonstrations
 
@@ -135,7 +139,7 @@ The guided script asks you to stop the payment worker, submits five orders, and 
 make fail
 ```
 
-This stops the normal payment worker, resets the demo, launches an always-failing payment worker, and verifies three attempts, one dead-lettered message, `FAILED` status, and no duplicate restaurant or initial-notification events. The Make target restarts the normal worker when the demonstration exits.
+This stops the normal payment worker, resets the demo, launches an always-failing payment worker, and verifies three attempts, one dead-lettered message, `FAILED` status, no restaurant ticket, a customer failure notice, and release of any inventory reservation. The Make target restarts the normal worker when the demonstration exits.
 
 ### Scale consumers
 
@@ -175,7 +179,7 @@ The GitHub Actions workflow runs on pushes and pull requests. It executes unit a
    RabbitMQ result appears while the synchronous request is still waiting.
 4. Compare API time with browser round-trip time in both result cards.
 5. Follow the live RabbitMQ event timeline until it reaches `COMPLETED`, then
-   show the three worker logs.
+   show the payment, inventory, coordinator, restaurant, and notification logs.
 6. Show the exchange, bindings, queue counts, and consumers in RabbitMQ Management.
 7. Run the load comparison, followed by the worker-down demonstration if time permits.
 
@@ -197,5 +201,5 @@ The GitHub Actions workflow runs on pushes and pull requests. It executes unit a
 - Payment, restaurant, inventory, and push services are simulated with delays.
 - Clients poll for order status; there are no WebSockets or mobile push integrations.
 - A single RabbitMQ broker is durable across restart but is not a highly available cluster.
-- The implementation demonstrates at-least-once delivery and does not implement payment idempotency.
+- The implementation demonstrates at-least-once delivery with database-backed logical idempotency; real payment-provider idempotency remains outside the demo.
 - Authentication, drivers, maps, dispatch, and real restaurant integrations are outside the project scope.

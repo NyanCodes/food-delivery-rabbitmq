@@ -12,6 +12,9 @@ x-app: &app
     T_INVENTORY: ${T_INVENTORY:-0.3}
     T_NOTIFICATION: ${T_NOTIFICATION:-0.4}
     FAIL_RATE: ${FAIL_RATE:-0.0}
+    PAYMENT_FAIL_RATE: ${PAYMENT_FAIL_RATE:-${FAIL_RATE:-0.0}}
+    INVENTORY_FAIL_RATE: ${INVENTORY_FAIL_RATE:-0.0}
+    RESTAURANT_FAIL_RATE: ${RESTAURANT_FAIL_RATE:-0.0}
   depends_on:
     migrate:
       condition: service_completed_successfully
@@ -86,6 +89,20 @@ services:
     environment:
       <<: *app-env
       SERVICE_NAME: payment
+
+  inventory-worker:
+    <<: *app
+    command: python -m app.workers.inventory_worker
+    environment:
+      <<: *app-env
+      SERVICE_NAME: inventory
+
+  coordinator-worker:
+    <<: *app
+    command: python -m app.workers.coordinator_worker
+    environment:
+      <<: *app-env
+      SERVICE_NAME: coordinator
 
   restaurant-worker:
     <<: *app

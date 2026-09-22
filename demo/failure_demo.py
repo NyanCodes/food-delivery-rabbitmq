@@ -34,9 +34,9 @@ def main() -> int:
     accepted = requests.post(f"{BASE}/orders", json=ORDER, timeout=10)
     accepted.raise_for_status()
     order_id = accepted.json()["order_id"]
-    print(f"Queued {order_id}. Starting a payment worker with FAIL_RATE=1.0.")
+    print(f"Queued {order_id}. Starting a payment worker with PAYMENT_FAIL_RATE=1.0.")
 
-    env = {**os.environ, "FAIL_RATE": "1.0"}
+    env = {**os.environ, "FAIL_RATE": "1.0", "PAYMENT_FAIL_RATE": "1.0"}
     worker = subprocess.Popen([sys.executable, "-m", "app.workers.payment_worker"],
                               env=env)
     try:
@@ -44,7 +44,8 @@ def main() -> int:
         order = None
         while time.time() < deadline:
             order = requests.get(f"{BASE}/orders/{order_id}", timeout=5).json()
-            if order["status"] == "FAILED":
+            stages = [event["stage"] for event in order["timeline"]]
+            if order["status"] == "FAILED" and "FAILURE_NOTIFIED" in stages:
                 break
             time.sleep(0.25)
         if not order or order["status"] != "FAILED":
@@ -59,8 +60,13 @@ def main() -> int:
         checks = {
             "one dead-letter": queue_count(config.DLQ) == 1,
             "failed status": order["status"] == "FAILED",
-            "one restaurant ticket": stages.count("RESTAURANT_NOTIFIED") == 1,
+            "no restaurant ticket": stages.count("RESTAURANT_NOTIFIED") == 0,
             "one initial notification": stages.count("NOTIFIED") == 1,
+            "one failure notification": stages.count("FAILURE_NOTIFIED") == 1,
+            "inventory released if reserved": (
+                "INVENTORY_RESERVED" not in stages
+                or stages.count("INVENTORY_RELEASED") == 1
+            ),
         }
         for label, passed in checks.items():
             print(f"  {'PASS' if passed else 'FAIL'}  {label}")

@@ -70,25 +70,30 @@ def save(image, name):
 
 
 def architecture():
-    image, d = canvas("RabbitMQ order architecture", "One event fans out to independent work queues; failures have a separate path.")
-    box(d, (60, 330, 300, 465), "Customer\nand demo UI", BLUE)
-    box(d, (370, 330, 610, 465), "FastAPI\nproducer", "#FFF0E8", ORANGE)
-    box(d, (690, 310, 960, 485), "orders\ntopic exchange", BLUE, NAVY)
-    queues = [(1040, 190, 1290, 300, "payment.process"),
-              (1040, 365, 1290, 475, "restaurant.notify"),
-              (1040, 540, 1290, 650, "notification.send")]
-    workers = ["Payment worker", "Restaurant worker", "Notification worker"]
-    arrow(d, (300, 398), (370, 398), "POST")
-    arrow(d, (610, 398), (690, 398), "created")
+    image, d = canvas("Gated RabbitMQ order architecture", "Payment and inventory run together; downstream success waits for both.")
+    box(d, (45, 330, 255, 455), "Customer\nand demo UI", BLUE, size=22)
+    box(d, (315, 330, 535, 455), "FastAPI\nproducer", "#FFF0E8", ORANGE, 22)
+    box(d, (615, 315, 865, 470), "orders\ntopic exchange", BLUE, NAVY, 23)
+    queues = [(930, 155, 1170, 245, "payment.process"),
+              (930, 270, 1170, 360, "inventory.reserve"),
+              (930, 385, 1170, 475, "order.coordinate"),
+              (930, 500, 1170, 590, "restaurant.notify"),
+              (930, 615, 1170, 705, "notification.send")]
+    workers = ["Payment", "Inventory", "Coordinator", "Restaurant", "Notification"]
+    arrow(d, (255, 392), (315, 392), "POST")
+    arrow(d, (535, 392), (615, 392), "created")
     for index, (x1, y1, x2, y2, label) in enumerate(queues):
-        box(d, (x1, y1, x2, y2), label, PALE, size=21)
-        box(d, (1360, y1, 1570, y2), workers[index], "#E8F5E9", size=20)
-        arrow(d, (960, 398), (1040, (y1+y2)//2))
-        arrow(d, (1290, (y1+y2)//2), (1360, (y1+y2)//2))
-    box(d, (690, 690, 960, 810), "PostgreSQL\nstate + timeline", "#F2EAFE", size=22)
-    arrow(d, (825, 485), (825, 690), "events")
-    box(d, (1040, 710, 1290, 810), "orders.dlq", "#FDECEC", RED, 21)
-    arrow(d, (1170, 650), (1170, 710), "failed", RED, True)
+        box(d, (x1, y1, x2, y2), label, PALE, size=18)
+        box(d, (1240, y1, 1445, y2), workers[index], "#E8F5E9", size=18)
+        arrow(d, (865, 392), (930, (y1+y2)//2))
+        arrow(d, (1170, (y1+y2)//2), (1240, (y1+y2)//2))
+    d.text((65, 535), "success chain", font=font(18, True), fill=ORANGE)
+    d.text((65, 565), "paid + reserved → ready", font=font(17), fill=MUTED)
+    d.text((65, 593), "ready → restaurant → confirmed", font=font(17), fill=MUTED)
+    box(d, (475, 690, 785, 810), "PostgreSQL\nworkflow + timeline", "#F2EAFE", size=21)
+    arrow(d, (740, 470), (630, 690))
+    box(d, (930, 750, 1170, 835), "orders.dlq", "#FDECEC", RED, 19)
+    arrow(d, (1050, 705), (1050, 750), "failed", RED, True)
     save(image, "architecture.png")
 
 
@@ -105,7 +110,7 @@ def before_after():
     box(d, (390, 565, 650, 685), "Save + publish", "#FFF0E8")
     box(d, (740, 565, 1020, 685), "202 Accepted\nin milliseconds", "#E8F5E9")
     arrow(d, (300, 625), (390, 625)); arrow(d, (650, 625), (740, 625))
-    box(d, (1130, 505, 1510, 745), "Background workers\n\nPayment\nRestaurant + inventory\nNotifications", PALE, size=21)
+    box(d, (1130, 505, 1510, 745), "Background workflow\n\nPayment ∥ inventory\nCoordinator gate\nRestaurant → customer", PALE, size=21)
     d.line((520, 565, 520, 470, 1130, 470, 1130, 505), fill=NAVY, width=4)
     d.polygon([(1130, 505), (1121, 489), (1139, 489)], fill=NAVY)
     d.text((755, 438), "queued background work", font=font(18), fill=NAVY)
@@ -113,18 +118,19 @@ def before_after():
 
 
 def sequence():
-    image, d = canvas("Asynchronous order sequence", "The API response reaches the customer before any slow worker must finish.")
-    names = ["Customer", "API", "PostgreSQL", "RabbitMQ", "Payment", "Restaurant", "Notification"]
-    xs = [100, 320, 555, 800, 1035, 1260, 1490]
+    image, d = canvas("Order sequence after the gate", "Only payment and inventory run in parallel; success follows the join.")
+    names = ["Customer", "API", "DB", "RabbitMQ", "Payment", "Inventory", "Coordinator", "Restaurant", "Notify"]
+    xs = [75, 235, 395, 570, 755, 935, 1115, 1300, 1490]
     for x, name in zip(xs, names):
         d.text((x-55, 175), name, font=font(20, True), fill=INK)
         d.line((x, 215, x, 820), fill="#C9CED4", width=2)
     events = [
-        (100, 320, 270, "POST /orders", NAVY), (320, 555, 340, "save PENDING", NAVY),
-        (320, 800, 410, "order.created", ORANGE), (320, 100, 480, "202 Accepted", NAVY),
-        (800, 1035, 560, "created", NAVY), (800, 1260, 610, "created", NAVY),
-        (800, 1490, 660, "created", NAVY), (1035, 800, 720, "order.paid", ORANGE),
-        (800, 1490, 770, "paid", NAVY),
+        (75, 235, 260, "POST", NAVY), (235, 395, 310, "PENDING", NAVY),
+        (235, 570, 360, "created", ORANGE), (235, 75, 410, "202", NAVY),
+        (570, 755, 470, "created", NAVY), (570, 935, 510, "created", NAVY),
+        (755, 1115, 570, "paid", ORANGE), (935, 1115, 610, "reserved", ORANGE),
+        (1115, 570, 660, "ready", ORANGE), (570, 1300, 700, "ready", NAVY),
+        (1300, 570, 750, "confirmed", ORANGE), (570, 1490, 790, "confirmed", NAVY),
     ]
     for x1, x2, y, label, color in events:
         arrow(d, (x1, y), (x2, y), label, color)
@@ -132,12 +138,12 @@ def sequence():
 
 
 def deployment():
-    image, d = canvas("Docker Compose deployment", "One application image runs five roles; infrastructure is health-gated.")
+    image, d = canvas("Docker Compose deployment", "One application image runs six roles; infrastructure is health-gated.")
     box(d, (90, 235, 390, 405), "RabbitMQ 4\n5672 / 15672", BLUE)
     box(d, (90, 535, 390, 705), "PostgreSQL 17\n5432", "#F2EAFE")
     box(d, (90, 735, 390, 825), "Migration job", "#FFF0E8", size=22)
     box(d, (570, 340, 1010, 735),
-        "Application roles\n\nAPI :8000\nPayment worker\nRestaurant worker\nNotification worker",
+        "Application roles\n\nAPI :8000\nPayment + inventory\nCoordinator\nRestaurant + notification",
         "#FFF0E8", size=22)
     box(d, (1120, 315, 1510, 605), "Shared image\nfood-delivery-rabbitmq\n\nNon-root user\nPinned dependencies\nRestart policies", PALE, size=22)
     arrow(d, (570, 440), (390, 320), "AMQP")

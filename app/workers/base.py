@@ -18,7 +18,8 @@ class Context:
     emit: Callable[[str, dict], None]
 
 
-def run_worker(queue: str, handler, name: str | None = None) -> None:
+def run_worker(queue: str, handler, name: str | None = None,
+               critical: bool = True) -> None:
     """Consume one delivery at a time and acknowledge only durable outcomes."""
     name = name or queue
     log = logs.setup(name)
@@ -79,7 +80,24 @@ def run_worker(queue: str, handler, name: str | None = None) -> None:
                 ch.basic_ack(method.delivery_tag)
                 log.info("   requeued %s as attempt %s", order_id, attempt + 1)
             else:
-                _store_failed(order_id, name, exc)
+                if critical:
+                    try:
+                        emit(config.RK_WORKFLOW_FAILED, {
+                            **payload,
+                            "failed_step": name,
+                            "failure_reason": str(exc),
+                        })
+                    except Exception:
+                        log.exception(
+                            "failure event publish failed; preserving original %s",
+                            order_id,
+                        )
+                        ch.basic_nack(method.delivery_tag, requeue=True)
+                        return
+                else:
+                    _store_notification_failed(
+                        order_id, name, routing_key, exc
+                    )
                 ch.basic_nack(method.delivery_tag, requeue=False)
                 log.error("   dead-lettered %s after %s attempts", order_id, attempt)
             return
@@ -106,9 +124,18 @@ def run_worker(queue: str, handler, name: str | None = None) -> None:
         db.close()
 
 
-def _store_failed(order_id: str, worker: str, exc: Exception) -> None:
-    """A database outage while recording failure must not crash the process."""
+def _store_notification_failed(order_id: str, worker: str,
+                               routing_key: str, exc: Exception) -> None:
+    """Notification delivery failure does not invalidate a confirmed order."""
     try:
-        store.set_status(order_id, "FAILED", f"{worker}: {exc}", worker)
+        store.add_event_once(
+            order_id,
+            "NOTIFICATION_FAILED",
+            str(exc),
+            worker,
+            f"notification.delivery_failed.{routing_key}",
+        )
     except Exception:
-        logs.setup(worker).exception("could not record FAILED for %s", order_id)
+        logs.setup(worker).exception(
+            "could not record notification failure for %s", order_id
+        )

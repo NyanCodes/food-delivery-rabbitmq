@@ -41,17 +41,34 @@ DLX = "orders.dlx"
 DLQ = "orders.dlq"
 
 RK_ORDER_CREATED = "order.created"
-RK_ORDER_PAID = "order.paid"
+RK_PAYMENT_SUCCEEDED = "payment.succeeded"
+RK_INVENTORY_RESERVED = "inventory.reserved"
+RK_WORKFLOW_FAILED = "workflow.failed"
+RK_ORDER_READY = "order.ready"
+RK_ORDER_CONFIRMED = "order.confirmed"
+RK_ORDER_FAILED = "order.failed"
 
 Q_PAYMENT = "payment.process"
+Q_INVENTORY = "inventory.reserve"
+Q_COORDINATOR = "order.coordinate"
 Q_RESTAURANT = "restaurant.notify"
 Q_NOTIFICATION = "notification.send"
 
 # queue name -> the routing keys it subscribes to
 QUEUES: dict[str, list[str]] = {
     Q_PAYMENT: [RK_ORDER_CREATED],
-    Q_RESTAURANT: [RK_ORDER_CREATED],
-    Q_NOTIFICATION: [RK_ORDER_CREATED, RK_ORDER_PAID],
+    Q_INVENTORY: [RK_ORDER_CREATED],
+    Q_COORDINATOR: [
+        RK_PAYMENT_SUCCEEDED,
+        RK_INVENTORY_RESERVED,
+        RK_WORKFLOW_FAILED,
+    ],
+    Q_RESTAURANT: [RK_ORDER_READY],
+    Q_NOTIFICATION: [
+        RK_ORDER_CREATED,
+        RK_ORDER_CONFIRMED,
+        RK_ORDER_FAILED,
+    ],
 }
 
 # --------------------------------------------------------------------------
@@ -69,8 +86,12 @@ T_RESTAURANT = _f("T_RESTAURANT", 0.5)
 T_INVENTORY = _f("T_INVENTORY", 0.3)
 T_NOTIFICATION = _f("T_NOTIFICATION", 0.4)
 
-# Probability (0.0-1.0) that the payment worker raises, to demo retry + DLQ.
+# Per-step failure probabilities (0.0-1.0). FAIL_RATE remains a compatibility
+# fallback for the original payment-only failure demo.
 FAIL_RATE = _f("FAIL_RATE", 0.0)
+PAYMENT_FAIL_RATE = _f("PAYMENT_FAIL_RATE", FAIL_RATE)
+INVENTORY_FAIL_RATE = _f("INVENTORY_FAIL_RATE", 0.0)
+RESTAURANT_FAIL_RATE = _f("RESTAURANT_FAIL_RATE", 0.0)
 
 # --------------------------------------------------------------------------
 # Startup patience — containers start in parallel, so wait rather than crash

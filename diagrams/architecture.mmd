@@ -3,16 +3,25 @@ flowchart LR
     API -->|save PENDING| DB[(PostgreSQL)]
     API -->|order.created| EX{{orders topic exchange}}
     EX -->|order.created| PQ[[payment.process]]
-    EX -->|order.created| RQ[[restaurant.notify]]
+    EX -->|order.created| IQ[[inventory.reserve]]
     EX -->|order.created| NQ[[notification.send]]
     PQ --> PW[Payment worker]
-    RQ --> RW[Restaurant worker]
+    IQ --> IW[Inventory worker]
     NQ --> NW[Notification worker]
-    PW -->|order.paid| EX
+    PW -->|payment.succeeded| EX
+    IW -->|inventory.reserved| EX
+    EX --> CQ[[order.coordinate]] --> CW[Coordinator]
+    CW -->|order.ready| EX
+    EX --> RQ[[restaurant.notify]] --> RW[Restaurant worker]
+    RW -->|order.confirmed| EX
+    CW -->|order.failed| EX
     PW --> DB
+    IW --> DB
+    CW --> DB
     RW --> DB
     NW --> DB
     PQ -. failed after 3 attempts .-> DLX{{orders.dlx}}
+    IQ -. failed after 3 attempts .-> DLX
     RQ -. failed after 3 attempts .-> DLX
     NQ -. failed after 3 attempts .-> DLX
     DLX --> DLQ[[orders.dlq]]

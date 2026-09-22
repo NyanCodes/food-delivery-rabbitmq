@@ -68,7 +68,7 @@ h1, h2, h3, h4, p { margin-top: 0; }
 h1 { margin-bottom: 18px; font-size: clamp(38px, 5.5vw, 66px); line-height: .98; letter-spacing: -.055em; font-weight: 800; }
 h1 span { color: var(--orange); }
 .hero-copy { max-width: 660px; margin-bottom: 0; color: var(--muted); font-size: 17px; }
-.stats { display: grid; grid-template-columns: repeat(5, 1fr); background: rgba(255,255,255,.55); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+.stats { display: grid; grid-template-columns: repeat(6, 1fr); background: rgba(255,255,255,.55); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
 .stats div { min-width: 0; padding: 14px 10px; text-align: center; border-right: 1px solid var(--line); }
 .stats div:last-child { border-right: 0; }
 .stats span, .stats strong { display: block; }
@@ -123,8 +123,8 @@ textarea { resize: vertical; min-height: 74px; }
 .result-name p { margin: 1px 0 0; color: var(--muted); font: 11px ui-monospace, SFMono-Regular, Menlo, monospace; }
 .status-badge { padding: 5px 9px; border-radius: 999px; font-size: 10px; font-weight: 850; letter-spacing: .04em; text-transform: uppercase; }
 .status-badge.idle { color: #635b52; background: #ede9e3; }
-.status-badge.pending, .status-badge.payment-processing { color: var(--amber); background: var(--amber-soft); }
-.status-badge.paid { color: var(--blue); background: #edf4ff; }
+.status-badge.pending, .status-badge.processing { color: var(--amber); background: var(--amber-soft); }
+.status-badge.ready, .status-badge.confirmed { color: var(--blue); background: #edf4ff; }
 .status-badge.completed { color: var(--green); background: var(--green-soft); }
 .status-badge.failed, .status-badge.error { color: var(--red); background: var(--red-soft); }
 .metrics { display: grid; grid-template-columns: repeat(3, 1fr); margin: 22px 0 14px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
@@ -169,7 +169,7 @@ footer { width: min(1180px, calc(100% - 40px)); margin: 0 auto; padding: 24px 0 
   .health-item { justify-content: flex-end; }
   main { width: min(100% - 28px, 1180px); padding-top: 40px; }
   h1 { font-size: 40px; }
-  .stats { grid-template-columns: repeat(5, minmax(58px, 1fr)); overflow-x: auto; }
+  .stats { grid-template-columns: repeat(6, minmax(58px, 1fr)); overflow-x: auto; }
   .composer, .result-card { padding: 18px; }
   .form-grid { grid-template-columns: 1fr; }
   .items-field { grid-column: auto; }

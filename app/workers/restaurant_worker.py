@@ -1,5 +1,6 @@
-"""Send the restaurant ticket and reserve its inventory."""
+"""Send a restaurant ticket only after the order is ready."""
 
+import random
 import time
 
 from app import config, store
@@ -10,15 +11,25 @@ WORKER = "restaurant"
 
 def handle(payload: dict, ctx) -> None:
     order_id = payload["order_id"]
+    if store.workflow_is_failed(order_id):
+        return
+    if store.workflow_step_done(order_id, "restaurant"):
+        ctx.emit(config.RK_ORDER_CONFIRMED, payload)
+        return
+
     time.sleep(config.T_RESTAURANT)
-    store.add_event(order_id, "RESTAURANT_NOTIFIED",
-                    f"ticket sent to {payload['restaurant']}", WORKER)
+    if (config.RESTAURANT_FAIL_RATE
+            and random.random() < config.RESTAURANT_FAIL_RATE):
+        raise RuntimeError("restaurant ticket delivery failed")
+    if not store.record_restaurant_confirmation(
+        order_id,
+        f"ticket sent to {payload['restaurant']}",
+        WORKER,
+    ):
+        return
     ctx.log.info("   ticket printed at %s", payload["restaurant"])
-    time.sleep(config.T_INVENTORY)
-    store.add_event(order_id, "INVENTORY_RESERVED",
-                    f"{len(payload['items'])} item(s) reserved", WORKER)
-    ctx.log.info("   reserved %s item(s)", len(payload["items"]))
+    ctx.emit(config.RK_ORDER_CONFIRMED, payload)
 
 
 if __name__ == "__main__":
-    run_worker(config.Q_RESTAURANT, handle, name=WORKER)
+    run_worker(config.Q_RESTAURANT, handle, name=WORKER, critical=True)
