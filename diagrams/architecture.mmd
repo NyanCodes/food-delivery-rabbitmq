@@ -1,0 +1,18 @@
+flowchart LR
+    C[Customer / Demo UI] -->|POST /orders| API[FastAPI producer]
+    API -->|save PENDING| DB[(PostgreSQL)]
+    API -->|order.created| EX{{orders topic exchange}}
+    EX -->|order.created| PQ[[payment.process]]
+    EX -->|order.created| RQ[[restaurant.notify]]
+    EX -->|order.created| NQ[[notification.send]]
+    PQ --> PW[Payment worker]
+    RQ --> RW[Restaurant worker]
+    NQ --> NW[Notification worker]
+    PW -->|order.paid| EX
+    PW --> DB
+    RW --> DB
+    NW --> DB
+    PQ -. failed after 3 attempts .-> DLX{{orders.dlx}}
+    RQ -. failed after 3 attempts .-> DLX
+    NQ -. failed after 3 attempts .-> DLX
+    DLX --> DLQ[[orders.dlq]]

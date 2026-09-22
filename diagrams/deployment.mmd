@@ -1,0 +1,19 @@
+flowchart TB
+    subgraph Docker Compose
+        RMQ[RabbitMQ management\n5672 and 15672]
+        PG[(PostgreSQL 17\n5432)]
+        MIG[Migration job]
+        API[API\n8000]
+        PAY[Payment worker]
+        REST[Restaurant worker]
+        NOTIFY[Notification worker]
+        MIG --> PG
+        API --> RMQ
+        API --> PG
+        PAY --> RMQ
+        PAY --> PG
+        REST --> RMQ
+        REST --> PG
+        NOTIFY --> RMQ
+        NOTIFY --> PG
+    end

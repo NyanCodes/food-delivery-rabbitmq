@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      rabbitmq:
+        image: rabbitmq:4-management
+        ports:
+          - 5672:5672
+          - 15672:15672
+        options: >-
+          --health-cmd "rabbitmq-diagnostics -q ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: orders
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d orders"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    env:
+      AMQP_URL: amqp://guest:guest@localhost:5672/%2F
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/orders
+      T_PAYMENT: "0.05"
+      T_RESTAURANT: "0.05"
+      T_INVENTORY: "0.05"
+      T_NOTIFICATION: "0.05"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Unit tests
+        run: pytest -q
+      - name: Start application
+        run: |
+          python -m scripts.migrate
+          python -m app.workers.payment_worker > payment.log 2>&1 & echo $! >> pids
+          python -m app.workers.restaurant_worker > restaurant.log 2>&1 & echo $! >> pids
+          python -m app.workers.notification_worker > notification.log 2>&1 & echo $! >> pids
+          uvicorn app.api:app --port 8000 > api.log 2>&1 & echo $! >> pids
+          for attempt in $(seq 1 30); do
+            curl -sf http://localhost:8000/health && break
+            sleep 2
+          done
+          curl -sf http://localhost:8000/health
+      - name: Integration tests
+        run: INTEGRATION=1 pytest -q tests/test_flow.py
+      - name: Logs on failure
+        if: failure()
+        run: tail -n 100 *.log || true
+      - name: Stop application
+        if: always()
+        run: xargs -r kill < pids || true
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - run: docker build -t food-delivery-rabbitmq:ci .

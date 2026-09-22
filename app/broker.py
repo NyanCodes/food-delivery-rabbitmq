@@ -123,13 +123,19 @@ class Publisher:
         self._ch = None
 
     def _ensure(self) -> None:
-        if self._conn is not None and self._conn.is_open:
+        if (self._conn is not None and self._conn.is_open
+                and self._ch is not None and self._ch.is_open):
             return
 
         self._conn = connect()
         self._ch = self._conn.channel()
         declare_topology(self._ch)
         self._ch.confirm_delivery()
+
+    def start(self) -> None:
+        """Eagerly connect; used by the API lifespan startup check."""
+        with self._lock:
+            self._ensure()
 
     def publish(self, routing_key: str, payload: dict) -> None:
         body = json.dumps(payload).encode()
@@ -139,7 +145,7 @@ class Publisher:
                 try:
                     self._ensure()
 
-                    self._ch.basic_publish(
+                    confirmed = self._ch.basic_publish(
                         exchange=config.EXCHANGE,
                         routing_key=routing_key,
                         body=body,
@@ -149,6 +155,8 @@ class Publisher:
                         mandatory=True,
                     )
 
+                    if confirmed is False:
+                        raise RuntimeError("broker negatively acknowledged publish")
                     return
 
                 except (pika.exceptions.AMQPError, OSError) as exc:
@@ -156,7 +164,12 @@ class Publisher:
                         "publish failed (%s), reconnecting",
                         exc
                     )
-                    self._conn = None
+                    try:
+                        if self._conn is not None and self._conn.is_open:
+                            self._conn.close()
+                    except Exception:
+                        pass
+                    self._conn = self._ch = None
 
             raise RuntimeError("publish failed twice")
 

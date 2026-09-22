@@ -1,0 +1,10 @@
+flowchart TB
+    subgraph Before[Before RabbitMQ]
+        B1[HTTP request] --> B2[Payment 0.8 s] --> B3[Restaurant 0.5 s] --> B4[Inventory 0.3 s] --> B5[Notification 0.4 s] --> B6[HTTP response about 2 s]
+    end
+    subgraph After[With RabbitMQ]
+        A1[HTTP request] --> A2[Save and publish] --> A3[202 Accepted in milliseconds]
+        A2 --> A4[Payment worker]
+        A2 --> A5[Restaurant worker]
+        A2 --> A6[Notification worker]
+    end

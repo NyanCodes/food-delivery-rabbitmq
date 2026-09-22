@@ -1,3 +1,26 @@
+x-app: &app
+  image: food-delivery-rabbitmq:local
+  environment: &app-env
+    AMQP_URL: amqp://guest:guest@rabbitmq:5672/%2F
+    DATABASE_URL: postgresql://postgres:postgres@postgres:5432/orders
+    RABBIT_HTTP: http://rabbitmq:15672
+    PYTHONUNBUFFERED: "1"
+    PREFETCH: ${PREFETCH:-1}
+    MAX_RETRIES: ${MAX_RETRIES:-3}
+    T_PAYMENT: ${T_PAYMENT:-0.8}
+    T_RESTAURANT: ${T_RESTAURANT:-0.5}
+    T_INVENTORY: ${T_INVENTORY:-0.3}
+    T_NOTIFICATION: ${T_NOTIFICATION:-0.4}
+    FAIL_RATE: ${FAIL_RATE:-0.0}
+  depends_on:
+    migrate:
+      condition: service_completed_successfully
+    rabbitmq:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+  restart: unless-stopped
+
 services:
   rabbitmq:
     image: rabbitmq:4-management
@@ -8,8 +31,10 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
-      test: [ "CMD", "rabbitmq-diagnostics", "-q", "ping" ]
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
       retries: 12
@@ -22,14 +47,60 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: orders
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres -d orders" ]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d orders"]
       interval: 5s
       timeout: 5s
       retries: 12
 
+  migrate:
+    build: .
+    image: food-delivery-rabbitmq:local
+    command: python -m scripts.migrate
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    <<: *app
+    command: uvicorn app.api:app --host 0.0.0.0 --port 8000
+    environment:
+      <<: *app-env
+      SERVICE_NAME: api
+    ports:
+      - "8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  payment-worker:
+    <<: *app
+    command: python -m app.workers.payment_worker
+    environment:
+      <<: *app-env
+      SERVICE_NAME: payment
+
+  restaurant-worker:
+    <<: *app
+    command: python -m app.workers.restaurant_worker
+    environment:
+      <<: *app-env
+      SERVICE_NAME: restaurant
+
+  notification-worker:
+    <<: *app
+    command: python -m app.workers.notification_worker
+    environment:
+      <<: *app-env
+      SERVICE_NAME: notification
+
 volumes:
   postgres_data:
+  rabbitmq_data:

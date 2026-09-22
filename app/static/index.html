@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Test synchronous and RabbitMQ-backed food order processing side by side.">
+  <title>Order Flow Lab</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Order Flow Lab home">
+      <span class="brand-mark" aria-hidden="true">OF</span>
+      <span><strong>Order Flow</strong><small>RabbitMQ test lab</small></span>
+    </a>
+    <div class="health" aria-label="Service health">
+      <span class="health-item"><i id="broker-dot" class="dot unknown"></i>RabbitMQ <strong id="broker-health">Checking</strong></span>
+      <span class="health-item"><i id="database-dot" class="dot unknown"></i>PostgreSQL <strong id="database-health">Checking</strong></span>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Synchronous vs. event-driven</p>
+        <h1>Same order. Same work.<br><span>See who waits.</span></h1>
+        <p class="hero-copy">Send a real order through both paths and watch RabbitMQ release the request while workers finish in the background.</p>
+      </div>
+      <div class="stats" aria-label="Order status totals">
+        <div><span>Pending</span><strong id="stat-pending">0</strong></div>
+        <div><span>Processing</span><strong id="stat-processing">0</strong></div>
+        <div><span>Paid</span><strong id="stat-paid">0</strong></div>
+        <div><span>Completed</span><strong id="stat-completed">0</strong></div>
+        <div><span>Failed</span><strong id="stat-failed">0</strong></div>
+      </div>
+    </section>
+
+    <section class="composer panel" aria-labelledby="order-heading">
+      <div class="section-heading">
+        <div>
+          <p class="eyebrow">Test payload</p>
+          <h2 id="order-heading">Build an order</h2>
+        </div>
+        <a href="/docs" target="_blank" rel="noreferrer">Open API docs <span aria-hidden="true">↗</span></a>
+      </div>
+
+      <form id="order-form">
+        <div class="form-grid">
+          <label>Customer
+            <input id="customer" name="customer" value="Aung" minlength="1" maxlength="80" required>
+          </label>
+          <label>Restaurant
+            <input id="restaurant" name="restaurant" value="Shan Noodle House" minlength="1" maxlength="120" required>
+          </label>
+          <label class="items-field">Items <span>one per line</span>
+            <textarea id="items" name="items" rows="3" required>Shan noodles
+Iced tea</textarea>
+          </label>
+          <label>Total
+            <span class="money-input"><span>฿</span><input id="total" name="total" type="number" value="180" min="0.01" max="100000" step="0.01" required></span>
+          </label>
+        </div>
+        <p id="form-error" class="form-error" role="alert" hidden></p>
+        <div class="actions">
+          <button id="async-button" class="button primary" type="button"><span aria-hidden="true">⚡</span> Send with RabbitMQ</button>
+          <button id="sync-button" class="button secondary" type="button">Send synchronously</button>
+          <span class="divider" aria-hidden="true"></span>
+          <button id="compare-button" class="button compare" type="button">Compare both paths</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="results-heading">
+      <div>
+        <p class="eyebrow">Live results</p>
+        <h2>Request comparison</h2>
+      </div>
+      <p>API time measures server work. Round trip includes the browser and network.</p>
+    </section>
+
+    <section class="results" aria-live="polite">
+      <article id="async-card" class="result-card async-card" data-lane="async">
+        <div class="result-topline">
+          <div class="result-name"><span class="result-icon">⚡</span><div><h3>RabbitMQ</h3><p>POST /orders</p></div></div>
+          <span class="status-badge idle" data-role="status">Ready</span>
+        </div>
+        <div class="metrics">
+          <div><span>API time</span><strong data-role="api-time">—</strong></div>
+          <div><span>Round trip</span><strong data-role="round-trip">—</strong></div>
+          <div><span>HTTP</span><strong data-role="http-status">—</strong></div>
+        </div>
+        <div class="order-reference"><span>Order ID</span><strong data-role="order-id">Not submitted</strong></div>
+        <p class="lane-message" data-role="message">Submit an order to watch its workers process events independently.</p>
+        <div class="timeline-wrap">
+          <div class="timeline-heading"><h4>Event timeline</h4><button type="button" class="text-button" data-role="refresh" hidden>Refresh</button></div>
+          <ol class="timeline" data-role="timeline"><li class="empty-state">No events yet</li></ol>
+        </div>
+        <details><summary>Technical details</summary><pre data-role="raw">No response yet.</pre></details>
+      </article>
+
+      <article id="sync-card" class="result-card sync-card" data-lane="sync">
+        <div class="result-topline">
+          <div class="result-name"><span class="result-icon">→</span><div><h3>Synchronous</h3><p>POST /orders/sync</p></div></div>
+          <span class="status-badge idle" data-role="status">Ready</span>
+        </div>
+        <div class="metrics">
+          <div><span>API time</span><strong data-role="api-time">—</strong></div>
+          <div><span>Round trip</span><strong data-role="round-trip">—</strong></div>
+          <div><span>HTTP</span><strong data-role="http-status">—</strong></div>
+        </div>
+        <div class="order-reference"><span>Order ID</span><strong data-role="order-id">Not submitted</strong></div>
+        <p class="lane-message" data-role="message">Submit an order to see the caller wait for each step in sequence.</p>
+        <div class="timeline-wrap">
+          <div class="timeline-heading"><h4>Event timeline</h4><button type="button" class="text-button" data-role="refresh" hidden>Refresh</button></div>
+          <ol class="timeline" data-role="timeline"><li class="empty-state">No events yet</li></ol>
+        </div>
+        <details><summary>Technical details</summary><pre data-role="raw">No response yet.</pre></details>
+      </article>
+    </section>
+  </main>
+
+  <footer><span>Order Flow Lab</span><span>FastAPI · RabbitMQ · PostgreSQL</span></footer>
+</body>
+</html>

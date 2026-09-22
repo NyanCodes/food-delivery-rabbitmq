@@ -9,3 +9,9 @@ logs/
 *.log
 .DS_Store
 *.egg-info/
+
+# Local artifact build and validation output
+.chart-data-*/
+.codex-documents/
+.codex-finalizer/
+.codex-presentations/

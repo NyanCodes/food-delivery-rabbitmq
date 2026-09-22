@@ -1,0 +1,24 @@
+sequenceDiagram
+    actor Customer
+    participant API
+    participant DB as PostgreSQL
+    participant MQ as RabbitMQ
+    participant P as Payment
+    participant R as Restaurant
+    participant N as Notification
+    Customer->>API: POST /orders
+    API->>DB: Save PENDING
+    API->>MQ: Publish order.created
+    API-->>Customer: 202 Accepted
+    par Independent consumers
+        MQ->>P: order.created
+        MQ->>R: order.created
+        MQ->>N: order.created
+    end
+    P->>DB: PAYMENT_PROCESSING then PAID
+    P->>MQ: Publish order.paid
+    R->>DB: Restaurant notified and inventory reserved
+    MQ->>N: order.paid
+    N->>DB: Notification and COMPLETED
+    Customer->>API: GET /orders/{id}
+    API-->>Customer: Status and timeline
